@@ -1,0 +1,6 @@
+id=SGCAM_DEX_Patcher
+name=SGCAM DEX Patcher
+version=v1
+versionCode=1
+author=SGCAM
+description=Patches installed SGCAM DEX to fix preview lag, AWB, black levels, and improve performance
