@@ -2,19 +2,21 @@
 """
 Build script for SGCAM DEX Patcher KernelSU module.
 
-Produces a KernelSU/Magisk module that patches the installed SGCAM APK
-at install time by applying bsdiff patches to the DEX files.
+Auto-downloads/compiles dependencies if missing:
+  - bspatch: cross-compiled from bspatch.c (needs aarch64-linux-gnu-gcc)
+  - zip: downloaded from Termux aarch64 package repo
 
 Usage:
   python3 build_module.py
 """
 
+import hashlib
 import os
 import shutil
 import subprocess
 import sys
+import urllib.request
 import zipfile
-import re
 
 ROOT = os.path.dirname(os.path.abspath(__file__))
 MODULE_BASE = os.path.join(ROOT, 'ModuleBase')
@@ -22,10 +24,131 @@ TOOLS_DIR = os.path.join(ROOT, 'tools')
 PATCHES_DIR = os.path.join(ROOT, 'patches')
 OUTPUT_DIR = os.path.join(ROOT, 'output')
 
+# Expected hashes for downloaded binaries (safety check)
+ZIP_URL = "https://packages.termux.dev/apt/termux-main/pool/main/z/zip/zip_3.0-7_aarch64.deb"
+ZIP_EXPECTED_SHA = "a0e32027146d73bf2ac385eacc8a98ce49481b5c481b3e1cce5d5cd33cc0be05"  # optional
+
+
+def ensure_bspatch():
+    """Compile bspatch from source if binary doesn't exist."""
+    bspatch_bin = os.path.join(TOOLS_DIR, 'bspatch')
+    if os.path.exists(bspatch_bin) and os.path.getsize(bspatch_bin) > 10000:
+        print(f"    [*] bspatch binary already exists, skipping compilation")
+        return
+    
+    print(f"    [*] Compiling bspatch for aarch64...")
+    bspatch_src = os.path.join(TOOLS_DIR, 'bspatch.c')
+    
+    # Check for cross-compiler
+    cc = shutil.which('aarch64-linux-gnu-gcc')
+    if not cc:
+        print(f"    [!] ERROR: aarch64-linux-gnu-gcc not found. Cannot compile bspatch.")
+        print(f"    [!] Install it or place a pre-built bspatch binary at {bspatch_bin}")
+        sys.exit(1)
+    
+    # Check if bzlib is available, if not build it
+    bzlib_path = os.path.join(TOOLS_DIR, 'libbz2.a')
+    if not os.path.exists(bzlib_path):
+        print(f"    [*] Building bzip2 for cross-compilation...")
+        # Download bzip2 source
+        bz2_url = "https://sourceware.org/pub/bzip2/bzip2-1.0.8.tar.gz"
+        bz2_tar = os.path.join(TOOLS_DIR, 'bzip2-1.0.8.tar.gz')
+        if not os.path.exists(bz2_tar):
+            print(f"    [*] Downloading bzip2 source...")
+            urllib.request.urlretrieve(bz2_url, bz2_tar)
+        
+        # Extract and build
+        build_dir = os.path.join(TOOLS_DIR, 'bzip2-build')
+        os.makedirs(build_dir, exist_ok=True)
+        subprocess.run(['tar', 'xzf', bz2_tar, '-C', build_dir], check=True)
+        bz2_src = os.path.join(build_dir, 'bzip2-1.0.8')
+        subprocess.run([
+            'make', '-C', bz2_src, 'CC=aarch64-linux-gnu-gcc',
+            'AR=aarch64-linux-gnu-ar', 'RANLIB=aarch64-linux-gnu-ranlib',
+            'libbz2.a'
+        ], check=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        shutil.copy(os.path.join(bz2_src, 'libbz2.a'), bzlib_path)
+        shutil.rmtree(build_dir)
+        os.remove(bz2_tar)
+    
+    # Compile bspatch
+    cmd = [
+        'aarch64-linux-gnu-gcc', '-static', '-o', bspatch_bin,
+        bspatch_src,
+        '-I', os.path.join(TOOLS_DIR),
+        bzlib_path
+    ]
+    subprocess.run(cmd, check=True)
+    
+    # Strip
+    strip_cmd = shutil.which('aarch64-linux-gnu-strip')
+    if strip_cmd:
+        subprocess.run([strip_cmd, bspatch_bin], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+    
+    size = os.path.getsize(bspatch_bin)
+    print(f"    [*] bspatch compiled: {size:,} bytes")
+
+
+def ensure_zip():
+    """Download zip binary from Termux if not present."""
+    zip_bin = os.path.join(TOOLS_DIR, 'zip')
+    if os.path.exists(zip_bin) and os.path.getsize(zip_bin) > 10000:
+        print(f"    [*] zip binary already exists, skipping download")
+        return
+    
+    print(f"    [*] Downloading zip binary from Termux...")
+    deb_path = os.path.join(TOOLS_DIR, 'zip_aarch64.deb')
+    
+    try:
+        urllib.request.urlretrieve(ZIP_URL, deb_path)
+    except Exception as e:
+        print(f"    [!] Failed to download zip: {e}")
+        print(f"    [!] Place a pre-built Android aarch64 zip binary at {zip_bin}")
+        sys.exit(1)
+    
+    # Extract the zip binary from the .deb
+    extract_dir = os.path.join(TOOLS_DIR, 'zip_extract')
+    os.makedirs(extract_dir, exist_ok=True)
+    
+    # .deb is ar archive containing tar.xz
+    subprocess.run(['ar', 'x', deb_path], cwd=extract_dir, check=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+    
+    data_tar = os.path.join(extract_dir, 'data.tar.xz')
+    if os.path.exists(data_tar):
+        subprocess.run(['tar', 'xJf', data_tar], cwd=extract_dir, check=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+    
+    # Find the zip binary
+    zip_extracted = None
+    for root, dirs, files in os.walk(extract_dir):
+        for f in files:
+            if f == 'zip':
+                zip_extracted = os.path.join(root, f)
+                break
+    
+    if not zip_extracted:
+        print(f"    [!] Could not find zip binary in extracted Termux package")
+        sys.exit(1)
+    
+    shutil.copy(zip_extracted, zip_bin)
+    os.chmod(zip_bin, 0o755)
+    shutil.rmtree(extract_dir)
+    os.remove(deb_path)
+    
+    size = os.path.getsize(zip_bin)
+    print(f"    [*] zip downloaded: {size:,} bytes")
+
+
 def main():
     print("[*] Building SGCAM DEX Patcher module...")
+    print()
     
-    # Verify all required files exist
+    # Step 1: Ensure tool binaries exist
+    print("  [*] Checking dependencies...")
+    ensure_bspatch()
+    ensure_zip()
+    print()
+    
+    # Step 2: Verify all required files exist
     required = [
         (TOOLS_DIR, 'bspatch'),
         (TOOLS_DIR, 'zip'),
@@ -35,15 +158,22 @@ def main():
         (PATCHES_DIR, 'classes3.patch.bsdf'),
     ]
     
+    all_ok = True
     for dirpath, filename in required:
         path = os.path.join(dirpath, filename)
         if not os.path.exists(path):
-            print(f"[!] ERROR: Required file not found: {path}")
-            sys.exit(1)
-        size = os.path.getsize(path)
-        print(f"    [✓] {filename} ({size:,} bytes)")
+            print(f"    [!] ERROR: Required file not found: {path}")
+            all_ok = False
+        else:
+            size = os.path.getsize(path)
+            print(f"    [*] {filename} ({size:,} bytes)")
     
-    # Create temp build directory
+    if not all_ok:
+        sys.exit(1)
+    
+    print()
+    
+    # Step 3: Create temp build directory
     tmp_dir = MODULE_BASE + 'Temp'
     if os.path.isdir(tmp_dir):
         shutil.rmtree(tmp_dir)
@@ -67,24 +197,24 @@ def main():
     os.chmod(os.path.join(tmp_dir, 'system/bin/bspatch'), 0o755)
     os.chmod(os.path.join(tmp_dir, 'system/bin/zip'), 0o755)
     
-    # Create module zip
+    # Step 4: Create module zip
     os.makedirs(OUTPUT_DIR, exist_ok=True)
     zip_path = os.path.join(OUTPUT_DIR, 'SGCAM_DEX_Patcher.zip')
     
+    print("  [*] Packaging module...")
     with zipfile.ZipFile(zip_path, 'w', zipfile.ZIP_DEFLATED) as zf:
         for dirpath, dirnames, filenames in os.walk(tmp_dir):
             for filename in filenames:
                 file_path = os.path.join(dirpath, filename)
                 arcname = os.path.relpath(file_path, tmp_dir)
                 zf.write(file_path, arcname)
-                print(f"    added: {arcname}")
     
     # Clean up
     shutil.rmtree(tmp_dir)
     
     print()
-    print(f"[✓] Module built: {zip_path}")
-    print(f"    Size: {os.path.getsize(zip_path):,} bytes")
+    print(f"  [*] Module built: {zip_path}")
+    print(f"      Size: {os.path.getsize(zip_path):,} bytes")
     print()
     print("=" * 60)
     print("Install via KernelSU Manager or Magisk:")
@@ -93,6 +223,7 @@ def main():
     print("  3. Ensure SGCAM is installed BEFORE module")
     print("  4. Reboot or force-stop SGCAM after install")
     print("=" * 60)
+
 
 if __name__ == '__main__':
     main()

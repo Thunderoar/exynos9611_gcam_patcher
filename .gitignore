@@ -7,4 +7,6 @@ __pycache__/
 /tools/bspatch
 /tools/smali.jar
 /tools/zip
+/tools/bzip2-1.0.8.tar.gz
+/tools/bzip2-build/
 
