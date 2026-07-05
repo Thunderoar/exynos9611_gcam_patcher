@@ -1,9 +1,15 @@
 # exynos9611_gcam_patcher
 
+
 problem statement
 
-the pink tint issues on Exynos9611 when using gcam is annoying, and i find it easier to work with the gcam itself rather than patching the .so xd
-due to the issues that were brought up from this repo issues https://github.com/TBM13/Samsung-Camera-Experiments/issues/23 and the goated guidance from TBM13 himself of ways to fix the pink tint. the module will patch the AsShotNeutral to 1 1 1 on the raw itself so the gcam can process it properly. tbh thats the only thing thats needed to fix the god awful pink tint. the black level can be set in the gcam itself through Black Level settings in the camera lens setting. 115 is quite good for me. adjust yours if needed.
+the pink tint issues on Exynos9611 when using gcam is HELLA annoying, and i find it easier to work with the gcam itself rather than patching the .so xd
+due to the issues that were brought up from this repo issues https://github.com/TBM13/Samsung-Camera-Experiments/issues/23 and the goated guidance from TBM13 himself of ways to fix the pink tint. ofc patching the gcam itself is a MASSIVE workaround but ey better than nothing xd. elegantly one day having the .so be patched would be nice.. not my end goal tho
+
+the module patch the AsShotNeutral to 1 1 1 on the raw itself so the gcam can process it properly. tbh thats the only thing thats needed to fix the god awful pink tint. the black level can be set in the gcam itself through Black Level settings in the camera lens setting. 115 is quite good for me. adjust yours if needed.
+
+this module is SPECIFICALLY FOR SGCAM_8.5.300.XX.10_STABLE_V24_SCAN3D_PACKAGE.apk, do take a look at it on the download section for links, using w other gcam IS NOT GUARANTEED, most likely failed cuz.. its patching the dex directly anyway. and yes! i use ai for lots of the patching and the disecting of the gcam xd. also yeah the preview lagged. seems to be related to buffer stuff, something something about full resolution 4000x3000 raw stream filling up the 5 frame buffer. dunno whats up with that, aint takin a look at that for now. i'll post the detail if people want to take a look at it.. if im not lazy later xd
+
 
 
 heres the offical doc not written by me xd
