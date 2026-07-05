@@ -30,7 +30,11 @@ The patches themselves fix:
 
 - Auto white balance (AWB)
 - Black levels
-- General camera performance
+- Some preview lag fixes
+
+The patches themselves do not fix:
+
+- CameraBuffer issue ( laggy preview )
 
 ## Repository layout
 
