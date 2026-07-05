@@ -1,4 +1,4 @@
-# exynos9611_gcam_patcher
+# exynos9611_sgcam_patcher
 
 
 problem statement
