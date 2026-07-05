@@ -1,3 +1,3 @@
-c4ec6933f53aae7662d7b632ea0703d7  original_classes.dex
-b6c5761b7d992c5a10cf5291b6e8b5ad  original_classes2.dex
-224bf0e08bb184d5699c6d7717bf3b7a  original_classes3.dex
+c4ec6933f53aae7662d7b632ea0703d7  classes.dex
+b6c5761b7d992c5a10cf5291b6e8b5ad  classes2.dex
+224bf0e08bb184d5699c6d7717bf3b7a  classes3.dex

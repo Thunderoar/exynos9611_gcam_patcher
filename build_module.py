@@ -3,7 +3,7 @@
 Build script for SGCAM DEX Patcher KernelSU module.
 
 Auto-downloads/compiles dependencies if missing:
-  - bspatch: cross-compiled from bspatch.c (needs aarch64-linux-gnu-gcc)
+  - bspatch: cross-compiled from bspatch.c (needs aarch64-linux-android35-clang)
   - zip: downloaded from Termux aarch64 package repo
 
 Usage:
@@ -40,10 +40,30 @@ def ensure_bspatch():
     bspatch_src = os.path.join(TOOLS_DIR, 'bspatch.c')
     
     # Check for cross-compiler
-    cc = shutil.which('aarch64-linux-gnu-gcc')
+    # Check for cross-compiler (NDK)
+    ndk_base = "/opt/android-ndk/toolchains/llvm/prebuilt/linux-x86_64/bin"
+    cc_candidates = [
+        shutil.which('aarch64-linux-android35-clang'),
+        os.path.join(ndk_base, 'aarch64-linux-android35-clang'),
+        shutil.which('aarch64-linux-gnu-gcc'),
+    ]
+    cc = None
+    strip_cmd = None
+    for c in cc_candidates:
+        if c and os.path.exists(c):
+            cc = c
+            # Find matching strip
+            cc_dir = os.path.dirname(c)
+            for s in ['llvm-strip', 'aarch64-linux-android-strip', 'aarch64-linux-gnu-strip']:
+                sc = shutil.which(s) or os.path.join(cc_dir, s)
+                if os.path.exists(sc):
+                    strip_cmd = sc
+                    break
+            break
+    
     if not cc:
-        print(f"    [!] ERROR: aarch64-linux-gnu-gcc not found. Cannot compile bspatch.")
-        print(f"    [!] Install it or place a pre-built bspatch binary at {bspatch_bin}")
+        print(f"    [!] ERROR: No aarch64 cross-compiler found! Install Android NDK or aarch64-linux-gnu-gcc.")
+        print(f"    [!] Can't compile bspatch. Place a pre-built Android binary at {bspatch_bin}")
         sys.exit(1)
     
     # Check if bzlib is available - we ship it pre-compiled as libbz2.a + bzlib.h
@@ -54,7 +74,7 @@ def ensure_bspatch():
     
     # Compile bspatch
     cmd = [
-        'aarch64-linux-gnu-gcc', '-static', '-o', bspatch_bin,
+        'aarch64-linux-android35-clang', '-static', '-o', bspatch_bin,
         bspatch_src,
         '-I', os.path.join(TOOLS_DIR),
         bzlib_path
@@ -62,7 +82,7 @@ def ensure_bspatch():
     subprocess.run(cmd, check=True)
     
     # Strip
-    strip_cmd = shutil.which('aarch64-linux-gnu-strip')
+    strip_cmd = shutil.which('llvm-strip')
     if strip_cmd:
         subprocess.run([strip_cmd, bspatch_bin], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
     
