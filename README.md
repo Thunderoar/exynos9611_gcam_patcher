@@ -1,5 +1,12 @@
 # exynos9611_gcam_patcher
 
+problem statement
+the pink tint issues on Exynos9611 when using gcam is annoying, and i find it easier to work with the gcam itself rather than patching the .so xd
+due to the issues that were brought up from this repo issues https://github.com/TBM13/Samsung-Camera-Experiments/issues/23 and the goated guidance from TBM13 himself of ways to fix the pink tint. the module will patch the AsShotNeutral to 1 1 1 on the raw itself so the gcam can process it properly. tbh thats the only thing thats needed to fix the god awful pink tint. the black level can be set in the gcam itself through Black Level settings in the camera lens setting. 115 is quite good for me. adjust yours if needed.
+
+
+heres the offical doc not written by me xd
+
 A KernelSU / Magisk module that hot-patches **SGCAM** (`com.samsung.android.scan3d`) — a Google Camera port repackaged to piggyback on Samsung's auxiliary-camera HAL — by bind-mounting an APK with patched `classes*.dex` files over the installed one.
 
 Built for **Exynos 9611** devices (Samsung Galaxy A51 / A41 / M31 / M21 / F41 etc.) running Android 13+.
@@ -13,7 +20,6 @@ Built for **Exynos 9611** devices (Samsung Galaxy A51 / A41 / M31 / M21 / F41 et
 
 The patches themselves fix:
 
-- Preview lag
 - Auto white balance (AWB)
 - Black levels
 - General camera performance
@@ -63,9 +69,11 @@ The script will:
 ## Install
 
 1. Ensure SGCAM (`com.samsung.android.scan3d`) is already installed on the device
-2. Push `output/SGCAM_DEX_Patcher.zip` to your phone
-3. Flash it via KernelSU Manager → Modules → Install from storage (or Magisk)
-4. Reboot or force-stop SGCAM — the patches take effect on next launch
+   Download here https://www.celsoazevedo.com/files/android/google-camera/dev-shamim/f/dl79/
+   'SGCAM_8.5.300.XX.10_STABLE_V24_SCAN3D_PACKAGE.apk'( credit to goated shamim )
+3. Push `output/SGCAM_DEX_Patcher.zip` to your phone
+4. Flash it via KernelSU Manager → Modules → Install from storage (or Magisk)
+5. Reboot or force-stop SGCAM — the patches take effect on next launch
 
 To verify the bind mount is active:
 
@@ -88,6 +96,15 @@ To regenerate patches after a DEX change:
 bsdiff original_classes.dex patched_classes.dex classes.patch.bsdf
 md5sum original_classes.dex >> hashes.txt   # only the original's hash matters
 ```
+## Credits & References
+
+This module stands on the shoulders of several community projects:
+
+- **[TBM13/Samsung-Camera-Experiments](https://github.com/TBM13/Samsung-Camera-Experiments)** — Tool that patches Exynos camera libraries to enable features like RAW capture (required by GCam). The SGCAM mod this module patches is built on top of TBM13's camera library patches. Without TBM13's work, GCam/SGCam wouldn't run on Exynos 9611 at all.
+- **[Issue #23 — Pink tint on Exynos 9611 (Galaxy M21)](https://github.com/TBM13/Samsung-Camera-Experiments/issues/23)** — Documents the infamous pink-tint problem on Exynos 9610/9611 devices, where the camera HAL outputs pre-processed DNGs with wrong `BlackLevel` and `AsShotNeutral` metadata. The discussion includes a manual ExifTool-based workaround (`BlackLevel = 3096 3096 3096 3096`, `AsShotNeutral = 1 1 1`) and a lib-side workaround (`Module_M21_NoPureBayerReprocessing.zip`). The patches shipped by this module address the related preview-lag / AWB / black-level symptoms at the SGCAM DEX layer.
+- **[bsdiff 4.3](https://www.daemonology.net/bsdiff/)** — Colin Percival's binary diff/patch tool. The `bspatch.c` shipped in `tools/` is the unmodified upstream source.
+- **[MMT Extended](https://github.com/Zackptg5/MMT-Extended)** — Zackptg5's Magisk Module Template Extended, the install framework used by `ModuleBase/customize.sh`.
+- **[Shamim's SGCAM_8.5.300.XX.10_STABLE_V24](https://www.celsoazevedo.com/files/android/google-camera/dev-shamim/f/dl79/)** — The SGCAM port this module patches, by Shamim. SGCAM is a Google Camera repackaging that piggybacks on Samsung's `scan3d` package name to access the auxiliary-camera HAL. Hosted on [celsoazevedo.com](https://www.celsoazevedo.com/files/android/google-camera/), the canonical GCam port directory.
 
 ## License
 
