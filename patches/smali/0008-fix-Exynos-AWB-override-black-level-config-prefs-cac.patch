@@ -1,0 +1,333 @@
+From 53ac2b6bec1e02bc741a07cef8fe2181e2f1b25c Mon Sep 17 00:00:00 2001
+From: roku <Thunderoar>
+Date: Sun, 5 Jul 2026 20:30:12 +0800
+Subject: [PATCH 8/8] fix: Exynos AWB override, black level config, prefs
+ caching, and preview lag fix
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+Patches in Shamim.smali:
+- Remove AWB debug logging spam
+- GetAwbGain(): return unity gains [1.0,1.0,1.0,1.0] on Exynos
+- GetBlackLevel(): read 4 user-configurable black levels on Exynos
+- GetDefaultString(): cache SharedPreferences in static field
+- GetSliderPref(): preview lag fix v2 — override CONTROL_MODE,
+  STATISTICS_FACE_DETECT_MODE, AE_TARGET_FPS_RANGE, and
+  STATISTICS_OIS_DATA_MODE to fix Exynos HAL reprocessing pipeline
+---
+ smali_classes3/sgcam/Shamim.smali | 235 +++++++++++++++++++++++++++++-
+ 1 file changed, 227 insertions(+), 8 deletions(-)
+
+diff --git a/smali_classes3/sgcam/Shamim.smali b/smali_classes3/sgcam/Shamim.smali
+index 40977b7e..1e61c841 100644
+--- a/smali_classes3/sgcam/Shamim.smali
++++ b/smali_classes3/sgcam/Shamim.smali
+@@ -3,6 +3,8 @@
+ 
+ 
+ # static fields
++.field private static sDefaultStringPrefs:Landroid/content/SharedPreferences;
++
+ .field public static Aemode:I
+ 
+ .field public static Aemodef:I
+@@ -490,14 +492,6 @@
+ 
+     aput v3, v6, v2
+ 
+-    const-string v1, "COLOR_CORRECTION_GAINS original from system"
+-
+-    invoke-static {v1, v5}, Lsgcam/logcat/LogcatGenerator;->GetAllArrayTypeValue(Ljava/lang/String;Ljava/lang/Object;)V
+-
+-    const-string v1, "COLOR_CORRECTION_GAINS fills with 1.0f"
+-
+-    invoke-static {v1, v6}, Lsgcam/logcat/LogcatGenerator;->GetAllArrayTypeValue(Ljava/lang/String;Ljava/lang/Object;)V
+-
+     invoke-static {v5, v6}, Ljava/util/Arrays;->equals([F[F)Z
+ 
+     move-result v3
+@@ -1777,6 +1771,26 @@
+ .method public static GetAwbGain(Ljcq;Lcom/google/googlex/gcam/FloatArray4;)Lcom/google/googlex/gcam/FloatArray4;
+     .locals 10
+ 
++    invoke-static {}, Lsgcam/default/DeviceCodeNames;->IdentifyExynos()Z
++
++    move-result v0
++
++    if-eqz v0, :cond_non_exynos_awb
++
++    const/4 v0, 0x4
++
++    new-array v0, v0, [F
++
++    fill-array-data v0, :array_exynos_awb
++
++    invoke-static {v0, p1}, Lsgcam/Shamim;->ConvertFArrayToFArray4([FLcom/google/googlex/gcam/FloatArray4;)Lcom/google/googlex/gcam/FloatArray4;
++
++    move-result-object v0
++
++    return-object v0
++
++    :cond_non_exynos_awb
++
+     const/4 v2, 0x4
+ 
+     new-array v3, v2, [F
+@@ -1850,6 +1864,14 @@
+     move-result-object v3
+ 
+     return-object v3
++
++    :array_exynos_awb
++    .array-data 4
++        0x3f800000    # 1.0f
++        0x3f800000    # 1.0f
++        0x3f800000    # 1.0f
++        0x3f800000    # 1.0f
++    .end array-data
+ .end method
+ 
+ .method public static GetAwbModeValue(F)Ljava/lang/Integer;
+@@ -2143,6 +2165,84 @@
+ .method public static GetBlackLevel(Lizc;Ljcq;)[F
+     .locals 10
+ 
++    invoke-static {}, Lsgcam/default/DeviceCodeNames;->IdentifyExynos()Z
++
++    move-result v0
++
++    if-eqz v0, :cond_non_exynos_bl
++
++    const/4 v0, 0x4
++
++    new-array v0, v0, [F
++
++    const-string v1, "pref_manual_black_level_1_key"
++
++    invoke-static {v1}, Lsgcam/lens/LensValue;->SetLensValue(Ljava/lang/String;)Ljava/lang/String;
++
++    move-result-object v1
++
++    const-string v3, "193.5"
++
++    invoke-static {v1, v3}, Lsgcam/lens/SharedPrefValues;->ConvertStringToFloat(Ljava/lang/String;Ljava/lang/String;)F
++
++    move-result v1
++
++    const/16 v2, 0x0
++
++    aput v1, v0, v2
++
++    const-string v1, "pref_manual_black_level_2_key"
++
++    invoke-static {v1}, Lsgcam/lens/LensValue;->SetLensValue(Ljava/lang/String;)Ljava/lang/String;
++
++    move-result-object v1
++
++    const-string v3, "193.5"
++
++    invoke-static {v1, v3}, Lsgcam/lens/SharedPrefValues;->ConvertStringToFloat(Ljava/lang/String;Ljava/lang/String;)F
++
++    move-result v1
++
++    const/16 v2, 0x1
++
++    aput v1, v0, v2
++
++    const-string v1, "pref_manual_black_level_3_key"
++
++    invoke-static {v1}, Lsgcam/lens/LensValue;->SetLensValue(Ljava/lang/String;)Ljava/lang/String;
++
++    move-result-object v1
++
++    const-string v3, "193.5"
++
++    invoke-static {v1, v3}, Lsgcam/lens/SharedPrefValues;->ConvertStringToFloat(Ljava/lang/String;Ljava/lang/String;)F
++
++    move-result v1
++
++    const/16 v2, 0x2
++
++    aput v1, v0, v2
++
++    const-string v1, "pref_manual_black_level_4_key"
++
++    invoke-static {v1}, Lsgcam/lens/LensValue;->SetLensValue(Ljava/lang/String;)Ljava/lang/String;
++
++    move-result-object v1
++
++    const-string v3, "193.5"
++
++    invoke-static {v1, v3}, Lsgcam/lens/SharedPrefValues;->ConvertStringToFloat(Ljava/lang/String;Ljava/lang/String;)F
++
++    move-result v1
++
++    const/16 v2, 0x3
++
++    aput v1, v0, v2
++
++    return-object v0
++
++    :cond_non_exynos_bl
++
+     const-string v0, "pref_black_level_key"
+ 
+     invoke-static {v0}, Lsgcam/lens/LensValue;->SetLensValue(Ljava/lang/String;)Ljava/lang/String;
+@@ -3001,6 +3101,55 @@
+ 
+     invoke-virtual {p0, v5, v1}, Liyn;->b(Landroid/hardware/camera2/CaptureRequest$Key;Ljava/lang/Object;)V
+ 
++    # ===== PREVIEW LAG FIX: Override HAL defaults that trigger Samsung reprocessing =====
++    # These 4 keys are HAL defaults from TEMPLATE_PREVIEW that SGCAM doesn't override.
++    # They cause the Exynos HAL to reprocess every preview frame 2-3 times (108-163ms/frame),
++    # dropping 216 frames per 15 seconds and delivering preview at 6.67 fps instead of 30 fps.
++    #
++    # Debug marker — verify this method actually runs (Log.e for visibility):
++    const-string v5, "PREVIEW_LAG_FIX"
++    const-string v1, "GetC2apiPref patch executing"
++    invoke-static {v5, v1}, Landroid/util/Log;->e(Ljava/lang/String;Ljava/lang/String;)I
++
++    # Patch 1: CONTROL_MODE = AUTO (1)
++    # Android constants: OFF=0 (breaks AWB → green preview!), AUTO=1, USE_SCENE_MODE=2
++    # AUTO keeps AE/AWB/AF running but avoids scene-mode reprocessing pipeline.
++    sget-object v5, Landroid/hardware/camera2/CaptureRequest;->CONTROL_MODE:Landroid/hardware/camera2/CaptureRequest$Key;
++    const/4 v1, 0x1
++    invoke-static {v1}, Ljava/lang/Integer;->valueOf(I)Ljava/lang/Integer;
++    move-result-object v1
++    invoke-virtual {p0, v5, v1}, Liyn;->b(Landroid/hardware/camera2/CaptureRequest$Key;Ljava/lang/Object;)V
++
++    # Patch 2: STATISTICS_FACE_DETECT_MODE = OFF (0)
++    # Stops face-detect-driven reprocessing triggered by FULL (128) default.
++    sget-object v5, Landroid/hardware/camera2/CaptureRequest;->STATISTICS_FACE_DETECT_MODE:Landroid/hardware/camera2/CaptureRequest$Key;
++    const/4 v1, 0x0
++    invoke-static {v1}, Ljava/lang/Integer;->valueOf(I)Ljava/lang/Integer;
++    move-result-object v1
++    invoke-virtual {p0, v5, v1}, Liyn;->b(Landroid/hardware/camera2/CaptureRequest$Key;Ljava/lang/Object;)V
++
++    # Patch 3: CONTROL_AE_TARGET_FPS_RANGE = [15, 30]
++    # Forces minimum 15 fps. HAL default is [8, 30], allowing AE to drop to 8 fps in dim light.
++    sget-object v5, Landroid/hardware/camera2/CaptureRequest;->CONTROL_AE_TARGET_FPS_RANGE:Landroid/hardware/camera2/CaptureRequest$Key;
++    new-instance v6, Landroid/util/Range;
++    const/16 v1, 0xf
++    invoke-static {v1}, Ljava/lang/Integer;->valueOf(I)Ljava/lang/Integer;
++    move-result-object v1
++    const/16 v2, 0x1e
++    invoke-static {v2}, Ljava/lang/Integer;->valueOf(I)Ljava/lang/Integer;
++    move-result-object v2
++    invoke-direct {v6, v1, v2}, Landroid/util/Range;-><init>(Ljava/lang/Comparable;Ljava/lang/Comparable;)V
++    invoke-virtual {p0, v5, v6}, Liyn;->b(Landroid/hardware/camera2/CaptureRequest$Key;Ljava/lang/Object;)V
++
++    # Patch 4: STATISTICS_OIS_DATA_MODE = OFF (0)
++    # Stops OIS data null pointer errors (HAL returns null OIS data anyway).
++    sget-object v5, Landroid/hardware/camera2/CaptureRequest;->STATISTICS_OIS_DATA_MODE:Landroid/hardware/camera2/CaptureRequest$Key;
++    const/4 v1, 0x0
++    invoke-static {v1}, Ljava/lang/Integer;->valueOf(I)Ljava/lang/Integer;
++    move-result-object v1
++    invoke-virtual {p0, v5, v1}, Liyn;->b(Landroid/hardware/camera2/CaptureRequest$Key;Ljava/lang/Object;)V
++    # ===== END PREVIEW LAG FIX =====
++
+     :cond_10
+     return-object p0
+ .end method
+@@ -3867,6 +4016,16 @@
+ .method public static GetCorrectionDBL([F[F)[F
+     .locals 6
+ 
++    invoke-static {}, Lsgcam/default/DeviceCodeNames;->IdentifyExynos()Z
++
++    move-result v0
++
++    if-eqz v0, :cond_exynos_dbl
++
++    return-object p0
++
++    :cond_exynos_dbl
++
+     const/4 v0, 0x4
+ 
+     const-string v1, "pref_dbl_key"
+@@ -4285,6 +4444,10 @@
+ .method public static GetDefaultString(Ljava/lang/String;Ljava/lang/String;)V
+     .locals 3
+ 
++    sget-object v1, Lsgcam/Shamim;->sDefaultStringPrefs:Landroid/content/SharedPreferences;
++
++    if-nez v1, :cond_init
++
+     invoke-static {}, Landroid/app/AppGlobals;->getInitialApplication()Landroid/app/Application;
+ 
+     move-result-object v0
+@@ -4307,6 +4470,9 @@
+ 
+     move-result-object v1
+ 
++    sput-object v1, Lsgcam/Shamim;->sDefaultStringPrefs:Landroid/content/SharedPreferences;
++
++    :cond_init
+     if-eqz p0, :cond_0
+ 
+     invoke-interface {v1, p0}, Landroid/content/SharedPreferences;->contains(Ljava/lang/String;)Z
+@@ -7017,6 +7183,59 @@
+     invoke-virtual {p0, v5, v4}, Liyn;->b(Landroid/hardware/camera2/CaptureRequest$Key;Ljava/lang/Object;)V
+ 
+     :cond_1
++    # ===== PREVIEW LAG FIX v2: Override HAL defaults in GetSliderPref =====
++    # GetSliderPref is called by ixn.k() for every key set on the preview request.
++    # This is the CONFIRMED hook point (GetC2apiPref was NOT called for preview).
++    # The 4 keys below are HAL defaults from TEMPLATE_PREVIEW that SGCAM doesn't override.
++    # They cause the Exynos HAL to reprocess every preview frame 2-3 times (108-163ms/frame),
++    # dropping 216 frames per 15 seconds and delivering preview at 6.67 fps instead of 30 fps.
++    #
++    # Note: This runs once per key in the request, but set() is idempotent so it's harmless.
++
++    # Debug marker (verify GetSliderPref runs — Log.e for visibility)
++    const-string v5, "PREVIEW_LAG_FIX_V2"
++    const-string v1, "GetSliderPref patch executing"
++    invoke-static {v5, v1}, Landroid/util/Log;->e(Ljava/lang/String;Ljava/lang/String;)I
++
++    # Patch 1: CONTROL_MODE = AUTO (1)
++    # Android constants: OFF=0 (breaks AWB → green preview!), AUTO=1, USE_SCENE_MODE=2
++    # AUTO keeps AE/AWB/AF running but avoids scene-mode reprocessing pipeline.
++    sget-object v5, Landroid/hardware/camera2/CaptureRequest;->CONTROL_MODE:Landroid/hardware/camera2/CaptureRequest$Key;
++    const/4 v1, 0x1
++    invoke-static {v1}, Ljava/lang/Integer;->valueOf(I)Ljava/lang/Integer;
++    move-result-object v1
++    invoke-virtual {p0, v5, v1}, Liyn;->b(Landroid/hardware/camera2/CaptureRequest$Key;Ljava/lang/Object;)V
++
++    # Patch 2: STATISTICS_FACE_DETECT_MODE = OFF (0)
++    # Stops face-detect-driven reprocessing triggered by FULL (128) default.
++    sget-object v5, Landroid/hardware/camera2/CaptureRequest;->STATISTICS_FACE_DETECT_MODE:Landroid/hardware/camera2/CaptureRequest$Key;
++    const/4 v1, 0x0
++    invoke-static {v1}, Ljava/lang/Integer;->valueOf(I)Ljava/lang/Integer;
++    move-result-object v1
++    invoke-virtual {p0, v5, v1}, Liyn;->b(Landroid/hardware/camera2/CaptureRequest$Key;Ljava/lang/Object;)V
++
++    # Patch 3: CONTROL_AE_TARGET_FPS_RANGE = [15, 30]
++    # Forces minimum 15 fps. HAL default is [8, 30], allowing AE to drop to 8 fps in dim light.
++    sget-object v5, Landroid/hardware/camera2/CaptureRequest;->CONTROL_AE_TARGET_FPS_RANGE:Landroid/hardware/camera2/CaptureRequest$Key;
++    new-instance v6, Landroid/util/Range;
++    const/16 v1, 0xf
++    invoke-static {v1}, Ljava/lang/Integer;->valueOf(I)Ljava/lang/Integer;
++    move-result-object v1
++    const/16 v2, 0x1e
++    invoke-static {v2}, Ljava/lang/Integer;->valueOf(I)Ljava/lang/Integer;
++    move-result-object v2
++    invoke-direct {v6, v1, v2}, Landroid/util/Range;-><init>(Ljava/lang/Comparable;Ljava/lang/Comparable;)V
++    invoke-virtual {p0, v5, v6}, Liyn;->b(Landroid/hardware/camera2/CaptureRequest$Key;Ljava/lang/Object;)V
++
++    # Patch 4: STATISTICS_OIS_DATA_MODE = OFF (0)
++    # Stops OIS data null pointer errors (HAL returns null OIS data anyway).
++    sget-object v5, Landroid/hardware/camera2/CaptureRequest;->STATISTICS_OIS_DATA_MODE:Landroid/hardware/camera2/CaptureRequest$Key;
++    const/4 v1, 0x0
++    invoke-static {v1}, Ljava/lang/Integer;->valueOf(I)Ljava/lang/Integer;
++    move-result-object v1
++    invoke-virtual {p0, v5, v1}, Liyn;->b(Landroid/hardware/camera2/CaptureRequest$Key;Ljava/lang/Object;)V
++    # ===== END PREVIEW LAG FIX v2 =====
++
+     return-object p0
+ .end method
+ 
+-- 
+2.54.0
+

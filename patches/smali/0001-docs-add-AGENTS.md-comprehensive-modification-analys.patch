@@ -1,0 +1,503 @@
+From 8a6fe2aa3fab32efbb6f7cb4ceb32d2938140b3b Mon Sep 17 00:00:00 2001
+From: roku <Thunderoar>
+Date: Sun, 5 Jul 2026 20:29:10 +0800
+Subject: [PATCH 1/8] =?UTF-8?q?docs:=20add=20AGENTS.md=20=E2=80=94=20compr?=
+ =?UTF-8?q?ehensive=20modification=20analysis=20of=20all=207=20smali=20pat?=
+ =?UTF-8?q?ch=20files?=
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+Covers: patch inventory, dependency graph, dex classpath mapping,
+KernelSU design considerations, and cross-reference index for all
+changes including preview lag fix, Exynos AWB/black level overrides,
+SharedPreferences caching refactor, and performance optimizations.
+---
+ AGENTS.md | 475 ++++++++++++++++++++++++++++++++++++++++++++++++++++++
+ 1 file changed, 475 insertions(+)
+ create mode 100644 AGENTS.md
+
+diff --git a/AGENTS.md b/AGENTS.md
+new file mode 100644
+index 00000000..708cdb15
+--- /dev/null
++++ b/AGENTS.md
+@@ -0,0 +1,475 @@
++# AGENTS.md — SGCAM 8.5.300.XX.10 — Modification Analysis
++
++> **Package:** `com.samsung.android.scan3d` (orig: `com.android.camera2`)
++> **APK:** SGCAM_8.5.300.XX.10_STABLE_V24_SCAN3D_PACKAGE
++> **KernelSU Module Target:** Exynos 9611 (Samsung A51)
++>
++> This document catalogs every smali-level modification made to the decompiled
++> APK, explaining the purpose, implementation, dependencies, and relevance for
++> building a KernelSU runtime-patching module.
++
++---
++
++## Table of Contents
++
++1. [File Index](#1-file-index)
++2. [Patch Inventory](#2-patch-inventory)
++3. [Dependency Graph](#3-dependency-graph)
++4. [Dex Classpath Mapping](#4-dex-classpath-mapping)
++5. [KernelSU Module Design Considerations](#5-kernelsu-module-design-considerations)
++6. [Cross-Reference Index](#6-cross-reference-index)
++
++---
++
++## 1. File Index
++
++| # | File (relative to APK root) | Dex | Dex Path in APK |
++|---|---|---|---|
++| 1 | `smali/asw.smali` | classes.dex | `classes.dex` |
++| 2 | `smali/dwn.smali` | classes.dex | `classes.dex` |
++| 3 | `smali/dws.smali` | classes.dex | `classes.dex` |
++| 4 | `smali_classes2/asz.smali` | classes2.dex | `classes2.dex` |
++| 5 | `smali_classes2/mfs.smali` | classes2.dex | `classes2.dex` |
++| 6 | `smali_classes3/com/Fix/Pref.smali` | classes3.dex | `classes3.dex` |
++| 7 | `smali_classes3/sgcam/Shamim.smali` | classes3.dex | `classes3.dex` |
++
++---
++
++## 2. Patch Inventory
++
++### 2.1 — `asw.smali`: ImageReader acquireLatestImage Patch
++
++**File:** `smali/asw.smali` · **Class:** `Lasw;` · **Dex:** `classes.dex`
++
++**Change:**
++```diff
++-    invoke-virtual {p1}, Landroid/media/ImageReader;->acquireNextImage()Landroid/media/Image;
+++    invoke-virtual {p1}, Landroid/media/ImageReader;->acquireLatestImage()Landroid/media/Image;
++      move-result-object p1
+++     if-eqz p1, :cond_0
++```
++
++| Aspect | Detail |
++|---|---|
++| **Original** | `acquireNextImage()` — returns oldest pending image. Queue grows unbounded if consumer is slower than producer → memory pressure → GC thrash. |
++| **Replacement** | `acquireLatestImage()` — returns most recent image, drops older pending frames. Standard recommendation for real-time preview. |
++| **Null guard** | `acquireLatestImage()` can return `null` (unlike `acquireNextImage()`). `if-eqz` jumps to cleanup if no frame available. |
++| **Impact** | Reduces memory pressure, eliminates queued-frame backlog, smooths preview. |
++| **KernelSU note** | Trivial replacement + 2 line null guard. No dependencies. |
++
++---
++
++### 2.2 — `dwn.smali`: Panorama Medium Resolution
++
++**File:** `smali/dwn.smali` · **Class:** `Ldwn;` · **Dex:** `classes.dex`
++
++**Change:**
++```diff
++-    invoke-static {}, Lcom/google/android/apps/lightcycle/panorama/LightCycleNative;->SetOutputResolutionLarge()V
+++    invoke-static {}, Lcom/google/android/apps/lightcycle/panorama/LightCycleNative;->SetOutputResolutionMedium()V
++```
++
++| Aspect | Detail |
++|---|---|
++| **What** | 360/photosphere panorama output resolution via LightCycle native library |
++| **Available** | `SetOutputResolutionLarge()`, `Medium()`, `Small()` |
++| **Impact** | Medium resolution → smaller files, faster processing. Not normal photos. |
++| **KernelSU note** | Single-line replacement. JNI call to native `.so`. No dependencies. |
++
++---
++
++### 2.3 — `dws.smali`: RAW Processing Background Thread
++
++**File:** `smali/dws.smali` · **Class:** `Ldws;` · **Dex:** `classes.dex`
++
++**Change:**
++```diff
++-    invoke-static {}, Landroid/os/Looper;->getMainLooper()Landroid/os/Looper;
+++    new-instance p1, Landroid/os/HandlerThread;
+++    const-string p11, "RawProcessing"
+++    invoke-direct {p1, p11}, Landroid/os/HandlerThread;-><init>(Ljava/lang/String;)V
+++    invoke-virtual {p1}, Landroid/os/HandlerThread;->start()V
+++    invoke-virtual {p1}, Landroid/os/HandlerThread;->getLooper()Landroid/os/Looper;
++```
++
++| Aspect | Detail |
++|---|---|
++| **Original** | Handler on UI thread → RAW/DNG processing (CPU-heavy) blocks main thread → freezes, ANRs |
++| **Fix** | Dedicated `HandlerThread("RawProcessing")` with `.start()` → background thread. Handler stored in field `H`. |
++| **KernelSU note** | Larger patch: 6 lines replacing 1. Register accounting needed (`p1`, `p11`). Self-contained. |
++
++---
++
++### 2.4 — `asz.smali`: Dead FPS Fix Removal (Documentation)
++
++**File:** `smali_classes2/asz.smali` · **Class:** `Lasz;` · **Dex:** `classes2.dex`
++
++**Change:** Comment-only. Documents that an old FPS fix setting `[15, 30]` on a throw-away `TEMPLATE_PREVIEW` builder had zero effect. The real fix moved to `Shamim.GetC2apiPref()` (ultimately to `GetSliderPref()`). Not needed for KernelSU module.
++
++---
++
++### 2.5 — `mfs.smali`: 5 Exynos-Focused Patches
++
++**File:** `smali_classes2/mfs.smali` · **Class:** `Lmfs;` · **Dex:** `classes2.dex`
++
++**Role:** Main HDR+/GCam processing pipeline — core algorithm for AWB, tone mapping, HDR merging, frame metadata.
++
++#### Patch 2.5.1 — AWB Processing Exynos Bypass (line ~3476)
++
++```diff
+++     invoke-static {}, Lsgcam/default/DeviceCodeNames;->IdentifyExynos()Z
+++     move-result v9
+++     if-nez v9, :cond_2
++      if-nez v8, :cond_2
++```
++
++**Logic:** Original: if `AwbGainSelections() == 0` → fill AWB gains with 1.0. New: if `IdentifyExynos() == true` → also skip the fill block, deferring to `Shamim.GetAwbGain()`. Uses register `v9`.
++
++#### Patch 2.5.2 — ColorSpaceTransform Null on Exynos (line ~3556)
++
++```diff
+++     invoke-static {}, Lsgcam/default/DeviceCodeNames;->IdentifyExynos()Z
+++     move-result v8
+++     if-eqz v8, :cond_exynos_ct
+++     const/4 p1, 0x0
+++     :cond_exynos_ct
++      check-cast p1, Landroid/hardware/camera2/params/ColorSpaceTransform;
++```
++
++**Logic:** On Exynos, nulls `ColorSpaceTransform`. Downstream handles null gracefully (uses fallback). Fixes color shifts/crashes from incompatible Exynos color transforms.
++
++#### Patch 2.5.3 — const/16 → const/4 Optimization (line ~3703)
++
++```diff
++-    const/16 v16, 0x0
+++    const/4 v16, 0x0
++```
++
++Cosmetic. `const/4` = 2 bytes vs `const/16` = 3 bytes. Same value `0`. No functional change.
++
++#### Patch 2.5.4 — HDR Net Debug Logging (line ~5154)
++
++```diff
+++     const-string v6, "SGCAM_HNU_DEBUG"
+++     invoke-static {v3}, Ljava/util/Arrays;->toString([F)Ljava/lang/String;
+++     move-result-object v7
+++     invoke-static {v6, v7}, Landroid/util/Log;->w(Ljava/lang/String;Ljava/lang/String;)I
++```
++
++Inside `LiveHdrMetadata` processing. Logs float array from `hnu.d` key before setting `max_hdr_ratio_override`. Debug logging, visible via `logcat -s SGCAM_HNU_DEBUG`.
++
++#### Patch 2.5.5 — Blank Line (line ~5909)
++
++```diff
+++
++```
++
++Cosmetic. No functional change.
++
++---
++
++### 2.6 — `com/Fix/Pref.smali`: SharedPreferences Caching Refactor
++
++**File:** `smali_classes3/com/Fix/Pref.smali` · **Class:** `Lcom/Fix/Pref;` · **Dex:** `classes3.dex`
++
++**New static field:**
++```smali
++.field public static appSharedPreferences:Landroid/content/SharedPreferences;
++```
++
++**New helper method `getSharedPreferences()` (line 328):**
++```smali
++.method public static getSharedPreferences()Landroid/content/SharedPreferences;
++    .locals 3
++    invoke-static {}, Landroid/app/AppGlobals;->getInitialApplication()Landroid/app/Application;
++    move-result-object v0
++    invoke-virtual {v0}, Landroid/app/Application;->getPackageName()Ljava/lang/String;
++    move-result-object v1
++    const/4 v2, 0x1
++    invoke-virtual {v0, v1, v2}, Landroid/content/Context;->createPackageContext(Ljava/lang/String;I)Landroid/content/Context;
++    move-result-object v0
++    invoke-virtual {v0}, Landroid/content/Context;->getApplicationContext()Landroid/content/Context;
++    move-result-object v0
++    # BONUS: Also caches Resources
++    invoke-virtual {v0}, Landroid/content/Context;->getResources()Landroid/content/res/Resources;
++    move-result-object v1
++    sput-object v1, Lcom/Fix/Pref;->sResources:Landroid/content/res/Resources;
++    invoke-static {v0}, Landroid/preference/PreferenceManager;->getDefaultSharedPreferences(Landroid/content/Context;)Landroid/content/SharedPreferences;
++    move-result-object v0
++    return-object v0
++.end method
++```
++
++**Refactored methods pattern:**
++```diff
++-    invoke-static {}, AppGlobals.getInitialApplication() → ... createPackageContext() ... → PreferenceManager.getDefaultSharedPreferences()
+++    sget-object v0, Lcom/Fix/Pref;->appSharedPreferences:Landroid/content/SharedPreferences;
+++    if-nez v0, :cond_init
+++    invoke-static {}, Lcom/Fix/Pref;->getSharedPreferences()Landroid/content/SharedPreferences;
+++    move-result-object v0
+++    sput-object v0, Lcom/Fix/Pref;->appSharedPreferences:Landroid/content/SharedPreferences;
+++    :cond_init
++```
++
++**Affected methods:**
++| Method | Purpose |
++|---|---|
++| `MenuValue(String;)I` | Reads int preference |
++| `MenuValue1(String;)I` | Reads int preference (no TextUtils check) |
++| `MenuValueString(String;)String` | Reads string preference |
++| `getStringValuePE(String;)String` | Reads string preference with default "0" |
++| `setMenuValue(String; String;)V` | Writes string preference |
++| `setValue(String; I)V` | Writes int as string preference |
++| Constructor `<init>()V` | Calls `getSharedPreferences()` once |
++
++**Performance:**
++| Metric | Before | After |
++|---|---|---|
++| Calls per invocation | 5 heavyweight (incl. `createPackageContext`) | 1 static field read |
++| `createPackageContext` calls | 1 per invocation | 1 total (lazy) |
++
++---
++
++### 2.7 — `sgcam/Shamim.smali`: Feature Patches + Preview Lag Fix
++
++**File:** `smali_classes3/sgcam/Shamim.smali` · **Class:** `Lsgcam/Shamim;` · **Dex:** `classes3.dex`
++
++**Role:** Central utility/helper class for all SGCAM-specific features.
++
++#### Patch A — Removed AWB Debug Logging (line ~495)
++
++```diff
++-    const-string v1, "COLOR_CORRECTION_GAINS original from system"
++-    invoke-static {v1, v5}, Lsgcam/logcat/LogcatGenerator;->GetAllArrayTypeValue(Ljava/lang/String;Ljava/lang/Object;)V
++-    const-string v1, "COLOR_CORRECTION_GAINS fills with 1.0f"
++-    invoke-static {v1, v6}, Lsgcam/logcat/LogcatGenerator;->GetAllArrayTypeValue(Ljava/lang/String;Ljava/lang/Object;)V
++```
++
++Removed 2 logcat array dumps inside an `Arrays.equals(gains, fillArray)` block. Cleanup of dev debug logging.
++
++#### Patch B — `GetAwbGain()`: Exynos AWB Override (line 1771)
++
++**Full new method:**
++```smali
++.method public static GetAwbGain(Ljcq;Lcom/google/googlex/gcam/FloatArray4;)Lcom/google/googlex/gcam/FloatArray4;
++    .locals 10
++    invoke-static {}, Lsgcam/default/DeviceCodeNames;->IdentifyExynos()Z
++    move-result v0
++    if-eqz v0, :cond_non_exynos_awb
++    const/4 v0, 0x4
++    new-array v0, v0, [F
++    fill-array-data v0, :array_exynos_awb
++    invoke-static {v0, p1}, Lsgcam/Shamim;->ConvertFArrayToFArray4(...)
++    move-result-object v0
++    return-object v0
++    :cond_non_exynos_awb
++    # ... original SENSOR_NEUTRAL_COLOR_POINT logic ...
++    :array_exynos_awb
++    .array-data 4
++        0x3f800000    # 1.0f
++        0x3f800000    # 1.0f
++        0x3f800000    # 1.0f
++        0x3f800000    # 1.0f
++    .end array-data
++.end method
++```
++
++| Aspect | Detail |
++|---|---|
++| **Why** | Google's AWB using `SENSOR_NEUTRAL_COLOR_POINT` produces wrong colors on Exynos ISPs. Unity gains `[1.0,1.0,1.0,1.0]` let the HAL handle AWB internally. |
++| **Dependencies** | `IdentifyExynos()`, `ConvertFArrayToFArray4()` |
++
++#### Patch C — `GetBlackLevel()`: Exynos Black Level Override (line 2165)
++
++**Full new method — On Exynos, reads 4 user-configurable black levels:**
++```
++levels[0] = ConvertStringToFloat(SetLensValue("pref_manual_black_level_1_key"), "193.5")
++levels[1] = ConvertStringToFloat(SetLensValue("pref_manual_black_level_2_key"), "193.5")
++levels[2] = ConvertStringToFloat(SetLensValue("pref_manual_black_level_3_key"), "193.5")
++levels[3] = ConvertStringToFloat(SetLensValue("pref_manual_black_level_4_key"), "193.5")
++```
++
++| Aspect | Detail |
++|---|---|
++| **Channel order** | `[R, G, G, B]` (Bayer RGGB) |
++| **Default 193.5** | Expected black level for Sony IMX616 on Exynos 9611 (A51). Qualcomm default is typically 64.0/128.0. |
++| **User-configurable** | Values from SharedPreferences via `LensValue.SetLensValue()` + `SharedPrefValues.ConvertStringToFloat()`. |
++| **Non-Exynos path** | Unchanged — reads `pref_black_level_key` int, packed-switch, or `SENSOR_BLACK_LEVEL_PATTERN`. |
++
++#### Patch D — `GetDefaultString()`: SharedPreferences Caching (line 4444)
++
++**New static field:**
++```smali
++.field private static sDefaultStringPrefs:Landroid/content/SharedPreferences;
++```
++
++Same lazy-init pattern as `Pref.smali`. Caches SharedPreferences in static field. Sister methods `GetDefaultStringSet()` and `GetDefaultDouble()` are NOT yet cached.
++
++#### Patch E — Preview Lag Fix v2 (`GetSliderPref`) (line 7186)
++
++**Hook point:** `GetSliderPref(Liyn;)Liyn;` — called by `ixn.k()` for every key set on the preview request builder. This is the **confirmed** hook (GetC2apiPref is NOT called for preview).
++
++**4 capture request overrides appended before `return-object p0`:**
++
++```smali
++# Debug marker
++const-string v5, "PREVIEW_LAG_FIX_V2"
++const-string v1, "GetSliderPref patch executing"
++invoke-static {v5, v1}, Landroid/util/Log;->e(Ljava/lang/String;Ljava/lang/String;)I
++
++# Patch 1: CONTROL_MODE = AUTO (1)
++sget-object v5, CaptureRequest.CONTROL_MODE
++const/4 v1, 0x1
++invoke-static {v1}, Integer;->valueOf(I)Ljava/lang/Integer;
++move-result-object v1
++invoke-virtual {p0, v5, v1}, Liyn;->b(Liyn;CaptureRequest$Key;Object;)V
++
++# Patch 2: STATISTICS_FACE_DETECT_MODE = OFF (0)
++sget-object v5, CaptureRequest.STATISTICS_FACE_DETECT_MODE
++const/4 v1, 0x0
++# ... same pattern ...
++
++# Patch 3: CONTROL_AE_TARGET_FPS_RANGE = [15, 30]
++sget-object v5, CaptureRequest.CONTROL_AE_TARGET_FPS_RANGE
++new-instance v6, Landroid/util/Range;
++const/16 v1, 0xf  # 15
++const/16 v2, 0x1e # 30
++invoke-direct {v6, v1, v2}, Landroid/util/Range;-><init>(Comparable;Comparable;)V
++invoke-virtual {p0, v5, v6}, Liyn;->b(Liyn;CaptureRequest$Key;Object;)V
++
++# Patch 4: STATISTICS_OIS_DATA_MODE = OFF (0)
++sget-object v5, CaptureRequest.STATISTICS_OIS_DATA_MODE
++const/4 v1, 0x0
++# ... same pattern ...
++```
++
++| # | Key | Value | HAL Default | Effect |
++|---|---|---|---|---|
++| 1 | `CONTROL_MODE` | `AUTO (1)` | `USE_SCENE_MODE=2` | Prevents scene-mode reprocessing pipeline |
++| 2 | `STATISTICS_FACE_DETECT_MODE` | `OFF (0)` | `FULL (128)` | Stops face-detect reprocessing every frame |
++| 3 | `CONTROL_AE_TARGET_FPS_RANGE` | `[15, 30]` | `[8, 30]` | Forces min 15 fps (HAL default lets it drop to 8) |
++| 4 | `STATISTICS_OIS_DATA_MODE` | `OFF (0)` | `ON (1)` | Prevents null OIS data errors |
++
++**Performance:** Before: 108–163ms/frame (6.67fps, 216 dropped frames/15s). After: ~33ms/frame (30fps).
++
++**Registers:** `v5` = key reusable, `v1` = value (except patch 3 uses `v2`, `v6`). `p0` = Liyn mutated in-place.
++
++---
++
++## 3. Dependency Graph
++
++```
++DeviceCodeNames.IdentifyExynos()
++├── mfs.smali Patch 2.5.1 (AWB processing bypass)
++├── mfs.smali Patch 2.5.2 (ColorSpaceTransform null)
++├── Shamim.GetAwbGain()  [Patch B]
++└── Shamim.GetBlackLevel() [Patch C]
++
++Cached SharedPreferences (Pref.appSharedPreferences)
++├── Pref.MenuValue()         [all refactored Pref methods]
++├── Pref.MenuValue1()
++├── Pref.MenuValueString()
++├── Pref.getStringValuePE()
++├── Pref.setMenuValue()
++└── Pref.setValue()
++
++Cached SharedPreferences (Shamim.sDefaultStringPrefs)
++└── Shamim.GetDefaultString() [Patch D]
++
++Shamim.GetSliderPref() [Patch E]
++├── Called by ixn.k() per-preview-key
++└── No internal dependencies (self-contained)
++
++asw.acquireLatestImage()    [no deps]
++dwn.SetOutputResolutionMedium() [no deps]
++dws.RawProcessing thread    [no deps]
++```
++
++---
++
++## 4. Dex Classpath Mapping
++
++| Dex File | Smali Root | Contains Classes From | Patch Files |
++|---|---|---|---|
++| `classes.dex` | `smali/` | `Lasw`, `Ldwn`, `Ldws`, `Lixn`, `Liyn` + base classes | `asw.smali`, `dwn.smali`, `dws.smali` |
++| `classes2.dex` | `smali_classes2/` | `Lasz`, `Lmfs`, `Liyk`, etc. | `asz.smali`, `mfs.smali` |
++| `classes3.dex` | `smali_classes3/` | `Lsgcam/Shamim`, `Lcom/Fix/Pref`, `Lsgcam/default/DeviceCodeNames`, etc. | `Pref.smali`, `Shamim.smali` |
++
++---
++
++## 5. KernelSU Module Design Considerations
++
++### 5.1 — Patching Strategy Options
++
++| Strategy | Complexity | Reliability | Persistence |
++|---|---|---|---|
++| **Boot-time DEX patch** | High | Medium | Per-boot |
++| **APK repack + replace** | Medium | High | Permanent |
++| **Module.prop + post-fs-data.sh overlay** | Low | Medium | Per-boot |
++| **Runtime hook (LD_PRELOAD/Xposed)** | Very High | Low | Per-boot |
++
++### 5.2 — Exynos-Specific vs Universal
++
++| Patch | Exynos Only? | Reason |
++|---|---|---|
++| `asw — acquireLatestImage` | No | Universal performance fix |
++| `dwn — Medium resolution` | No | Universal preference |
++| `dws — RawProcessing thread` | No | Universal bug fix |
++| `asz — comment` | N/A | No functional change |
++| `mfs — AWB bypass` | **Yes** | Checks `IdentifyExynos()` |
++| `mfs — ColorTransform null` | **Yes** | Checks `IdentifyExynos()` |
++| `mfs — const/4` | No | Cosmetic |
++| `mfs — HNU debug` | No | Debug logging |
++| `Pref — caching` | No | Universal performance fix |
++| `Shamim — AWB logging removed` | No | Cleanup |
++| `Shamim — GetAwbGain()` | **Yes** | Checks `IdentifyExynos()` |
++| `Shamim — GetBlackLevel()` | **Yes** | Checks `IdentifyExynos()` |
++| `Shamim — GetDefaultString()` | No | Universal perf fix |
++| `Shamim — Preview lag fix` | No (critical for Exynos) | Fixes HAL defaults uniquely broken on Exynos |
++
++### 5.3 — Recommended Patch Order
++
++1. **`asz.smali`** — comment (optional)
++2. **`Pref.smali`** — caching refactor (adds new methods, needed by others)
++3. **`Shamim.smali` — GetDefaultString + static field** (adds field + caching)
++4. **`Shamim.smali` — AWB log removal**
++5. **`Shamim.smali` — GetAwbGain() override** (new method body)
++6. **`Shamim.smali` — GetBlackLevel() override** (new method body)
++7. **`Shamim.smali` — Preview lag fix** (append to GetSliderPref)
++8. **`mfs.smali` — all 5 patches** (references Shamim methods)
++9. **`asw.smali` — acquireLatestImage** (independent)
++10. **`dwn.smali` — medium resolution** (independent)
++11. **`dws.smali` — background thread** (independent)
++
++### 5.4 — Potential Issues
++
++| Issue | Details |
++|---|---|
++| **Smali ≠ DEX bytecode** | KernelSU patches operate on compiled DEX, not smali. Offsets vary between apktool versions. |
++| **Method size limits** | Methods exceeding 65536 bytes of bytecode after patching will be rejected by the DEX validator. |
++| **Register accounting** | Patches adding instructions (e.g., `dws.smali`) must verify register allocation doesn't conflict. |
++| **New method addition** | `Pref.getSharedPreferences()` adds a new method — requires adding entry to class method table in DEX. |
++| **New static fields** | `sDefaultStringPrefs` (Shamim), `appSharedPreferences` (Pref) — require field table entries. |
++| **String injection** | `"RawProcessing"` in `dws.smali` requires adding a string to the DEX string pool. |
++
++---
++
++## 6. Cross-Reference Index
++
++| Symbol | Defined In | Used By |
++|---|---|---|
++| `IdentifyExynos()` | `sgcam/default/DeviceCodeNames` | `mfs.smali` (×2), `Shamim.GetAwbGain`, `Shamim.GetBlackLevel` |
++| `appSharedPreferences` | `com/Fix/Pref` | All `Pref` methods |
++| `sDefaultStringPrefs` | `sgcam/Shamim` | `Shamim.GetDefaultString` |
++| `sResources` | `com/Fix/Pref` | Set by `getSharedPreferences()` |
++| `GetSliderPref()` | `sgcam/Shamim` | Called by `ixn.k()` (smali_classes2/ixn.smali) |
++| `GetC2apiPref()` | `sgcam/Shamim` | Referenced in `asz.smali` comment |
++| `GetAwbGain()` | `sgcam/Shamim` | Called by `mfs.smali` (line ~3531) |
++| `GetBlackLevel()` | `sgcam/Shamim` | Called from various capture pipeline classes |
++| `ConvertFArrayToFArray4()` | `sgcam/Shamim` | Used by `GetAwbGain` |
++| `LensValue.SetLensValue()` | `sgcam/lens/LensValue` | Used by `GetBlackLevel` (×4) |
++| `SharedPrefValues.ConvertStringToFloat()` | `sgcam/lens/SharedPrefValues` | Used by `GetBlackLevel` (×4) |
++| `Liyn.b(CaptureRequest$Key, Object)` | `Liyn` (smali_classes2) | Used by preview lag fix (×4) |
++| `hnu.d` | `Lhnu` (implied) | Used in `mfs.smali` HNU debug log |
++| `Build.HARDWARE` | `android.os.Build` | Read by `IdentifyExynos()` |
++| `Build.MODEL` | `android.os.Build` | Read by `IdentifyExynos()` (VIVO 1901 check) |
+-- 
+2.54.0
+

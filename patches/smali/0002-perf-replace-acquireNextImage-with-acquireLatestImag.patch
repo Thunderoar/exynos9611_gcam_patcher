@@ -1,0 +1,32 @@
+From 9e07150ab9cf62048468a91826cd0cc90747224e Mon Sep 17 00:00:00 2001
+From: roku <Thunderoar>
+Date: Sun, 5 Jul 2026 20:30:11 +0800
+Subject: [PATCH 2/8] perf: replace acquireNextImage with acquireLatestImage +
+ null guard in image reader callback
+
+Changes onImageAvailable() to use acquireLatestImage() instead of
+acquireNextImage() to prevent frame queue buildup and reduce memory
+pressure. Adds null check since acquireLatestImage() can return null.
+---
+ smali/asw.smali | 3 ++-
+ 1 file changed, 2 insertions(+), 1 deletion(-)
+
+diff --git a/smali/asw.smali b/smali/asw.smali
+index 494c446c..823d0eaa 100644
+--- a/smali/asw.smali
++++ b/smali/asw.smali
+@@ -66,9 +66,10 @@
+ .method public final onImageAvailable(Landroid/media/ImageReader;)V
+     .locals 4
+ 
+-    invoke-virtual {p1}, Landroid/media/ImageReader;->acquireNextImage()Landroid/media/Image;
++    invoke-virtual {p1}, Landroid/media/ImageReader;->acquireLatestImage()Landroid/media/Image;
+ 
+     move-result-object p1
++    if-eqz p1, :cond_0
+ 
+     :try_start_0
+     iget-object v0, p0, Lasw;->b:Lats;
+-- 
+2.54.0
+

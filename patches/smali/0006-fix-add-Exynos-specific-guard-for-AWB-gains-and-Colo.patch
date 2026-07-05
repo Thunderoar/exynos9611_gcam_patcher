@@ -1,0 +1,84 @@
+From e969f442dd9fccd91b11fdf6ece88773805c8579 Mon Sep 17 00:00:00 2001
+From: roku <Thunderoar>
+Date: Sun, 5 Jul 2026 20:30:11 +0800
+Subject: [PATCH 6/8] fix: add Exynos-specific guard for AWB gains and
+ ColorSpaceTransform + HNU debug
+
+Patches in mfs.smali:
+- Bypass AWB gain fill on Exynos, deferring to Shamim.GetAwbGain()
+- Null ColorSpaceTransform on Exynos to avoid broken color transforms
+- const/16 to const/4 optimization (cosmetic)
+- Add SGCAM_HNU_DEBUG logging for HDR Net metadata
+---
+ smali_classes2/mfs.smali | 27 ++++++++++++++++++++++++++-
+ 1 file changed, 26 insertions(+), 1 deletion(-)
+
+diff --git a/smali_classes2/mfs.smali b/smali_classes2/mfs.smali
+index 078edcb1..8c2253a6 100644
+--- a/smali_classes2/mfs.smali
++++ b/smali_classes2/mfs.smali
+@@ -3473,6 +3473,12 @@
+ 
+     move-result v8
+ 
++    invoke-static {}, Lsgcam/default/DeviceCodeNames;->IdentifyExynos()Z
++
++    move-result v9
++
++    if-nez v9, :cond_2
++
+     if-nez v8, :cond_2
+ 
+     const/4 v8, 0x4
+@@ -3547,6 +3553,16 @@
+ 
+     move-result-object p1
+ 
++    invoke-static {}, Lsgcam/default/DeviceCodeNames;->IdentifyExynos()Z
++
++    move-result v8
++
++    if-eqz v8, :cond_exynos_ct
++
++    const/4 p1, 0x0
++
++    :cond_exynos_ct
++
+     check-cast p1, Landroid/hardware/camera2/params/ColorSpaceTransform;
+ 
+     if-nez p1, :cond_3
+@@ -3684,7 +3700,7 @@
+ 
+     move-result-wide v9
+ 
+-    const/16 v16, 0x0
++    const/4 v16, 0x0
+ 
+     const-wide/16 v17, 0x0
+ 
+@@ -5154,6 +5170,14 @@
+ 
+     if-lez v4, :cond_2e
+ 
++    const-string v6, "SGCAM_HNU_DEBUG"
++
++    invoke-static {v3}, Ljava/util/Arrays;->toString([F)Ljava/lang/String;
++
++    move-result-object v7
++
++    invoke-static {v6, v7}, Landroid/util/Log;->w(Ljava/lang/String;Ljava/lang/String;)I
++
+     const/4 v4, 0x0
+ 
+     aget v5, v3, v4
+@@ -5882,6 +5906,7 @@
+ 
+     if-eqz v3, :cond_3b
+ 
++
+     :try_start_3
+     invoke-interface {v2, v3}, Ljcu;->d(Landroid/hardware/camera2/CaptureResult$Key;)Ljava/lang/Object;
+ 
+-- 
+2.54.0
+

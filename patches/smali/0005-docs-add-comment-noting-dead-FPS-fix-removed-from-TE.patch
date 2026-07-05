@@ -1,0 +1,30 @@
+From 7243131e7d3a058eebf3c4a3178e9c44554bde3e Mon Sep 17 00:00:00 2001
+From: roku <Thunderoar>
+Date: Sun, 5 Jul 2026 20:30:11 +0800
+Subject: [PATCH 5/8] docs: add comment noting dead FPS fix removed from
+ TEMPLATE_PREVIEW builder
+
+Documents that the old FPS range override had no effect because it
+was applied to a throw-away builder used only to harvest HAL defaults.
+---
+ smali_classes2/asz.smali | 4 ++++
+ 1 file changed, 4 insertions(+)
+
+diff --git a/smali_classes2/asz.smali b/smali_classes2/asz.smali
+index 81ad4720..5de72298 100644
+--- a/smali_classes2/asz.smali
++++ b/smali_classes2/asz.smali
+@@ -76,6 +76,10 @@
+ 
+     iput-boolean v3, p0, Lasz;->g:Z
+ 
++    # NOTE: Dead FPS FIX patch removed — it set [15, 30] on the throw-away TEMPLATE_PREVIEW
++    # builder used only to harvest defaults. The real FPS override now lives in
++    # Lsgcam/Shamim;->GetC2apiPref(Liyn;)Liyn; (Patch 3 of the preview lag fix).
++
+     sget-object p2, Landroid/hardware/camera2/CaptureRequest;->CONTROL_AE_TARGET_FPS_RANGE:Landroid/hardware/camera2/CaptureRequest$Key;
+ 
+     invoke-virtual {p1, p2}, Landroid/hardware/camera2/CaptureRequest$Builder;->get(Landroid/hardware/camera2/CaptureRequest$Key;)Ljava/lang/Object;
+-- 
+2.54.0
+

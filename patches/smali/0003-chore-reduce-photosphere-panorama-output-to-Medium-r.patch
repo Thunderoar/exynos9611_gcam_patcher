@@ -1,0 +1,28 @@
+From dc1216dd1bab7ca91dc0028f5223777ca687a8ec Mon Sep 17 00:00:00 2001
+From: roku <Thunderoar>
+Date: Sun, 5 Jul 2026 20:30:11 +0800
+Subject: [PATCH 3/8] chore: reduce photosphere panorama output to Medium
+ resolution
+
+Changes SetOutputResolutionLarge() to SetOutputResolutionMedium()
+to produce smaller 360 panorama files with faster processing.
+---
+ smali/dwn.smali | 2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+
+diff --git a/smali/dwn.smali b/smali/dwn.smali
+index e5b4d6af..0e8b7452 100644
+--- a/smali/dwn.smali
++++ b/smali/dwn.smali
+@@ -223,7 +223,7 @@
+ .method public static n()V
+     .locals 0
+ 
+-    invoke-static {}, Lcom/google/android/apps/lightcycle/panorama/LightCycleNative;->SetOutputResolutionLarge()V
++    invoke-static {}, Lcom/google/android/apps/lightcycle/panorama/LightCycleNative;->SetOutputResolutionMedium()V
+ 
+     return-void
+ .end method
+-- 
+2.54.0
+

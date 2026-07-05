@@ -1,0 +1,443 @@
+From 328eda010e2db49ed59d53e6c83d3573566c448d Mon Sep 17 00:00:00 2001
+From: roku <Thunderoar>
+Date: Sun, 5 Jul 2026 20:30:12 +0800
+Subject: [PATCH 7/8] perf: cache SharedPreferences via lazy-initialized static
+ field in Pref class
+
+Adds getSharedPreferences() helper that caches the result in a static
+field appSharedPreferences. All MenuValue/setValue methods now use the
+cached prefs instead of calling createPackageContext() on every invocation.
+Also caches Resources as a bonus.
+---
+ smali_classes3/com/Fix/Pref.smali | 257 +++++++-----------------------
+ 1 file changed, 59 insertions(+), 198 deletions(-)
+
+diff --git a/smali_classes3/com/Fix/Pref.smali b/smali_classes3/com/Fix/Pref.smali
+index 47181e3e..1bca445a 100644
+--- a/smali_classes3/com/Fix/Pref.smali
++++ b/smali_classes3/com/Fix/Pref.smali
+@@ -36,28 +36,17 @@
+ .method public static MenuValue(Ljava/lang/String;)I
+     .locals 3
+ 
+-    invoke-static {}, Landroid/app/AppGlobals;->getInitialApplication()Landroid/app/Application;
+-
+-    move-result-object v0
+-
+-    invoke-virtual {v0}, Landroid/app/Application;->getPackageName()Ljava/lang/String;
+-
+-    move-result-object v1
+-
+-    const/4 v2, 0x1
++    sget-object v0, Lcom/Fix/Pref;->appSharedPreferences:Landroid/content/SharedPreferences;
+ 
+-    invoke-virtual {v0, v1, v2}, Landroid/content/Context;->createPackageContext(Ljava/lang/String;I)Landroid/content/Context;
++    if-nez v0, :cond_init
+ 
+-    move-result-object v0
+-
+-    invoke-virtual {v0}, Landroid/content/Context;->getApplicationContext()Landroid/content/Context;
++    invoke-static {}, Lcom/Fix/Pref;->getSharedPreferences()Landroid/content/SharedPreferences;
+ 
+     move-result-object v0
+ 
+-    invoke-static {v0}, Landroid/preference/PreferenceManager;->getDefaultSharedPreferences(Landroid/content/Context;)Landroid/content/SharedPreferences;
+-
+-    move-result-object v0
++    sput-object v0, Lcom/Fix/Pref;->appSharedPreferences:Landroid/content/SharedPreferences;
+ 
++    :cond_init
+     invoke-interface {v0, p0}, Landroid/content/SharedPreferences;->contains(Ljava/lang/String;)Z
+ 
+     move-result v1
+@@ -91,38 +80,23 @@
+ .method public static MenuValue1(Ljava/lang/String;)I
+     .locals 3
+ 
+-    invoke-static {}, Landroid/app/AppGlobals;->getInitialApplication()Landroid/app/Application;
+-
+-    move-result-object v0
+-
+-    invoke-virtual {v0}, Landroid/app/Application;->getPackageName()Ljava/lang/String;
+-
+-    move-result-object v1
+-
+-    const/4 v2, 0x1
+-
+-    invoke-virtual {v0, v1, v2}, Landroid/content/Context;->createPackageContext(Ljava/lang/String;I)Landroid/content/Context;
++    sget-object v0, Lcom/Fix/Pref;->appSharedPreferences:Landroid/content/SharedPreferences;
+ 
+-    move-result-object v0
++    if-nez v0, :cond_init
+ 
+-    invoke-virtual {v0}, Landroid/content/Context;->getApplicationContext()Landroid/content/Context;
++    invoke-static {}, Lcom/Fix/Pref;->getSharedPreferences()Landroid/content/SharedPreferences;
+ 
+     move-result-object v0
+ 
+-    invoke-static {v0}, Landroid/preference/PreferenceManager;->getDefaultSharedPreferences(Landroid/content/Context;)Landroid/content/SharedPreferences;
+-
+-    move-result-object v1
++    sput-object v0, Lcom/Fix/Pref;->appSharedPreferences:Landroid/content/SharedPreferences;
+ 
+-    invoke-interface {v1, p0}, Landroid/content/SharedPreferences;->contains(Ljava/lang/String;)Z
++    :cond_init
++    invoke-interface {v0, p0}, Landroid/content/SharedPreferences;->contains(Ljava/lang/String;)Z
+ 
+     move-result v2
+ 
+     if-eqz v2, :cond_0
+ 
+-    invoke-static {v0}, Landroid/preference/PreferenceManager;->getDefaultSharedPreferences(Landroid/content/Context;)Landroid/content/SharedPreferences;
+-
+-    move-result-object v0
+-
+     const/4 v1, 0x0
+ 
+     invoke-interface {v0, p0, v1}, Landroid/content/SharedPreferences;->getString(Ljava/lang/String;Ljava/lang/String;)Ljava/lang/String;
+@@ -140,29 +114,18 @@
+ .method public static MenuValueString(Ljava/lang/String;)Ljava/lang/String;
+     .locals 3
+ 
+-    invoke-static {}, Landroid/app/AppGlobals;->getInitialApplication()Landroid/app/Application;
+-
+-    move-result-object v0
+-
+-    invoke-virtual {v0}, Landroid/app/Application;->getPackageName()Ljava/lang/String;
+-
+-    move-result-object v1
+-
+-    const/4 v2, 0x1
++    sget-object v0, Lcom/Fix/Pref;->appSharedPreferences:Landroid/content/SharedPreferences;
+ 
+-    invoke-virtual {v0, v1, v2}, Landroid/content/Context;->createPackageContext(Ljava/lang/String;I)Landroid/content/Context;
++    if-nez v0, :cond_init
+ 
+-    move-result-object v0
+-
+-    invoke-virtual {v0}, Landroid/content/Context;->getApplicationContext()Landroid/content/Context;
++    invoke-static {}, Lcom/Fix/Pref;->getSharedPreferences()Landroid/content/SharedPreferences;
+ 
+     move-result-object v0
+ 
+-    invoke-static {v0}, Landroid/preference/PreferenceManager;->getDefaultSharedPreferences(Landroid/content/Context;)Landroid/content/SharedPreferences;
+-
+-    move-result-object v1
++    sput-object v0, Lcom/Fix/Pref;->appSharedPreferences:Landroid/content/SharedPreferences;
+ 
+-    invoke-interface {v1, p0}, Landroid/content/SharedPreferences;->contains(Ljava/lang/String;)Z
++    :cond_init
++    invoke-interface {v0, p0}, Landroid/content/SharedPreferences;->contains(Ljava/lang/String;)Z
+ 
+     move-result v1
+ 
+@@ -176,10 +139,6 @@
+     return-object v0
+ 
+     :cond_0
+-    invoke-static {v0}, Landroid/preference/PreferenceManager;->getDefaultSharedPreferences(Landroid/content/Context;)Landroid/content/SharedPreferences;
+-
+-    move-result-object v0
+-
+     const/4 v1, 0x0
+ 
+     invoke-interface {v0, p0, v1}, Landroid/content/SharedPreferences;->getString(Ljava/lang/String;Ljava/lang/String;)Ljava/lang/String;
+@@ -192,28 +151,17 @@
+ .method public static PutBooleanValue(Ljava/lang/String;Z)V
+     .locals 12
+ 
+-    invoke-static {}, Landroid/app/AppGlobals;->getInitialApplication()Landroid/app/Application;
++    sget-object v1, Lcom/Fix/Pref;->appSharedPreferences:Landroid/content/SharedPreferences;
+ 
+-    move-result-object v0
++    if-nez v1, :cond_init
+ 
+-    invoke-virtual {v0}, Landroid/app/Application;->getPackageName()Ljava/lang/String;
++    invoke-static {}, Lcom/Fix/Pref;->getSharedPreferences()Landroid/content/SharedPreferences;
+ 
+     move-result-object v1
+ 
+-    const/4 v2, 0x1
+-
+-    invoke-virtual {v0, v1, v2}, Landroid/content/Context;->createPackageContext(Ljava/lang/String;I)Landroid/content/Context;
+-
+-    move-result-object v0
+-
+-    invoke-virtual {v0}, Landroid/content/Context;->getApplicationContext()Landroid/content/Context;
+-
+-    move-result-object v0
+-
+-    invoke-static {v0}, Landroid/preference/PreferenceManager;->getDefaultSharedPreferences(Landroid/content/Context;)Landroid/content/SharedPreferences;
+-
+-    move-result-object v1
++    sput-object v1, Lcom/Fix/Pref;->appSharedPreferences:Landroid/content/SharedPreferences;
+ 
++    :cond_init
+     invoke-interface {v1}, Landroid/content/SharedPreferences;->edit()Landroid/content/SharedPreferences$Editor;
+ 
+     move-result-object v1
+@@ -230,28 +178,17 @@
+ .method public static getBooleanValue(Ljava/lang/String;)Z
+     .locals 13
+ 
+-    invoke-static {}, Landroid/app/AppGlobals;->getInitialApplication()Landroid/app/Application;
+-
+-    move-result-object v0
+-
+-    invoke-virtual {v0}, Landroid/app/Application;->getPackageName()Ljava/lang/String;
+-
+-    move-result-object v1
+-
+-    const/4 v2, 0x1
+-
+-    invoke-virtual {v0, v1, v2}, Landroid/content/Context;->createPackageContext(Ljava/lang/String;I)Landroid/content/Context;
++    sget-object v0, Lcom/Fix/Pref;->appSharedPreferences:Landroid/content/SharedPreferences;
+ 
+-    move-result-object v0
++    if-nez v0, :cond_init
+ 
+-    invoke-virtual {v0}, Landroid/content/Context;->getApplicationContext()Landroid/content/Context;
++    invoke-static {}, Lcom/Fix/Pref;->getSharedPreferences()Landroid/content/SharedPreferences;
+ 
+     move-result-object v0
+ 
+-    invoke-static {v0}, Landroid/preference/PreferenceManager;->getDefaultSharedPreferences(Landroid/content/Context;)Landroid/content/SharedPreferences;
+-
+-    move-result-object v0
++    sput-object v0, Lcom/Fix/Pref;->appSharedPreferences:Landroid/content/SharedPreferences;
+ 
++    :cond_init
+     invoke-interface {v0, p0}, Landroid/content/SharedPreferences;->contains(Ljava/lang/String;)Z
+ 
+     move-result v1
+@@ -276,28 +213,17 @@
+ .method public static getDoubleValue(Ljava/lang/String;)D
+     .locals 3
+ 
+-    invoke-static {}, Landroid/app/AppGlobals;->getInitialApplication()Landroid/app/Application;
+-
+-    move-result-object v0
+-
+-    invoke-virtual {v0}, Landroid/app/Application;->getPackageName()Ljava/lang/String;
+-
+-    move-result-object v1
+-
+-    const/4 v2, 0x1
++    sget-object v0, Lcom/Fix/Pref;->appSharedPreferences:Landroid/content/SharedPreferences;
+ 
+-    invoke-virtual {v0, v1, v2}, Landroid/content/Context;->createPackageContext(Ljava/lang/String;I)Landroid/content/Context;
++    if-nez v0, :cond_init
+ 
+-    move-result-object v0
+-
+-    invoke-virtual {v0}, Landroid/content/Context;->getApplicationContext()Landroid/content/Context;
++    invoke-static {}, Lcom/Fix/Pref;->getSharedPreferences()Landroid/content/SharedPreferences;
+ 
+     move-result-object v0
+ 
+-    invoke-static {v0}, Landroid/preference/PreferenceManager;->getDefaultSharedPreferences(Landroid/content/Context;)Landroid/content/SharedPreferences;
+-
+-    move-result-object v0
++    sput-object v0, Lcom/Fix/Pref;->appSharedPreferences:Landroid/content/SharedPreferences;
+ 
++    :cond_init
+     invoke-interface {v0, p0}, Landroid/content/SharedPreferences;->contains(Ljava/lang/String;)Z
+ 
+     move-result v1
+@@ -332,28 +258,17 @@
+ .method public static getFloatValue(Ljava/lang/String;)F
+     .locals 3
+ 
+-    invoke-static {}, Landroid/app/AppGlobals;->getInitialApplication()Landroid/app/Application;
+-
+-    move-result-object v0
+-
+-    invoke-virtual {v0}, Landroid/app/Application;->getPackageName()Ljava/lang/String;
+-
+-    move-result-object v1
+-
+-    const/4 v2, 0x1
++    sget-object v0, Lcom/Fix/Pref;->appSharedPreferences:Landroid/content/SharedPreferences;
+ 
+-    invoke-virtual {v0, v1, v2}, Landroid/content/Context;->createPackageContext(Ljava/lang/String;I)Landroid/content/Context;
++    if-nez v0, :cond_init
+ 
+-    move-result-object v0
+-
+-    invoke-virtual {v0}, Landroid/content/Context;->getApplicationContext()Landroid/content/Context;
++    invoke-static {}, Lcom/Fix/Pref;->getSharedPreferences()Landroid/content/SharedPreferences;
+ 
+     move-result-object v0
+ 
+-    invoke-static {v0}, Landroid/preference/PreferenceManager;->getDefaultSharedPreferences(Landroid/content/Context;)Landroid/content/SharedPreferences;
+-
+-    move-result-object v0
++    sput-object v0, Lcom/Fix/Pref;->appSharedPreferences:Landroid/content/SharedPreferences;
+ 
++    :cond_init
+     invoke-interface {v0, p0}, Landroid/content/SharedPreferences;->contains(Ljava/lang/String;)Z
+ 
+     move-result v1
+@@ -477,38 +392,23 @@
+ 
+     const-string v3, "0"
+ 
+-    invoke-static {}, Landroid/app/AppGlobals;->getInitialApplication()Landroid/app/Application;
+-
+-    move-result-object v0
+-
+-    invoke-virtual {v0}, Landroid/app/Application;->getPackageName()Ljava/lang/String;
+-
+-    move-result-object v1
+-
+-    const/4 v2, 0x1
+-
+-    invoke-virtual {v0, v1, v2}, Landroid/content/Context;->createPackageContext(Ljava/lang/String;I)Landroid/content/Context;
++    sget-object v0, Lcom/Fix/Pref;->appSharedPreferences:Landroid/content/SharedPreferences;
+ 
+-    move-result-object v0
++    if-nez v0, :cond_init
+ 
+-    invoke-virtual {v0}, Landroid/content/Context;->getApplicationContext()Landroid/content/Context;
++    invoke-static {}, Lcom/Fix/Pref;->getSharedPreferences()Landroid/content/SharedPreferences;
+ 
+     move-result-object v0
+ 
+-    invoke-static {v0}, Landroid/preference/PreferenceManager;->getDefaultSharedPreferences(Landroid/content/Context;)Landroid/content/SharedPreferences;
+-
+-    move-result-object v1
++    sput-object v0, Lcom/Fix/Pref;->appSharedPreferences:Landroid/content/SharedPreferences;
+ 
+-    invoke-interface {v1, p0}, Landroid/content/SharedPreferences;->contains(Ljava/lang/String;)Z
++    :cond_init
++    invoke-interface {v0, p0}, Landroid/content/SharedPreferences;->contains(Ljava/lang/String;)Z
+ 
+     move-result v2
+ 
+     if-eqz v2, :cond_0
+ 
+-    invoke-static {v0}, Landroid/preference/PreferenceManager;->getDefaultSharedPreferences(Landroid/content/Context;)Landroid/content/SharedPreferences;
+-
+-    move-result-object v0
+-
+     const/4 v1, 0x0
+ 
+     invoke-interface {v0, p0, v1}, Landroid/content/SharedPreferences;->getString(Ljava/lang/String;Ljava/lang/String;)Ljava/lang/String;
+@@ -524,40 +424,23 @@
+ 
+     const-string v3, "0"
+ 
+-    invoke-static {}, Landroid/app/AppGlobals;->getInitialApplication()Landroid/app/Application;
+-
+-    move-result-object v0
+-
+-    invoke-virtual {v0}, Landroid/app/Application;->getPackageName()Ljava/lang/String;
+-
+-    move-result-object v1
+-
+-    const/4 v2, 0x1
+-
+-    invoke-virtual {v0, v1, v2}, Landroid/content/Context;->createPackageContext(Ljava/lang/String;I)Landroid/content/Context;
++    sget-object v0, Lcom/Fix/Pref;->appSharedPreferences:Landroid/content/SharedPreferences;
+ 
+-    move-result-object v0
++    if-nez v0, :cond_init
+ 
+-    invoke-virtual {v0}, Landroid/content/Context;->getApplicationContext()Landroid/content/Context;
++    invoke-static {}, Lcom/Fix/Pref;->getSharedPreferences()Landroid/content/SharedPreferences;
+ 
+     move-result-object v0
+ 
+-    invoke-static {v0}, Landroid/preference/PreferenceManager;->getDefaultSharedPreferences(Landroid/content/Context;)Landroid/content/SharedPreferences;
+-
+-    move-result-object v1
++    sput-object v0, Lcom/Fix/Pref;->appSharedPreferences:Landroid/content/SharedPreferences;
+ 
+-    invoke-interface {v1, p0}, Landroid/content/SharedPreferences;->contains(Ljava/lang/String;)Z
++    :cond_init
++    invoke-interface {v0, p0}, Landroid/content/SharedPreferences;->contains(Ljava/lang/String;)Z
+ 
+     move-result v2
+ 
+     if-eqz v2, :cond_0
+ 
+-    invoke-static {v0}, Landroid/preference/PreferenceManager;->getDefaultSharedPreferences(Landroid/content/Context;)Landroid/content/SharedPreferences;
+-
+-    move-result-object v0
+-
+-    const/4 v1, 0x0
+-
+     invoke-interface {v0, p0, v3}, Landroid/content/SharedPreferences;->getString(Ljava/lang/String;Ljava/lang/String;)Ljava/lang/String;
+ 
+     move-result-object v3
+@@ -569,28 +452,17 @@
+ .method public static setMenuValue(Ljava/lang/String;Ljava/lang/String;)V
+     .locals 3
+ 
+-    invoke-static {}, Landroid/app/AppGlobals;->getInitialApplication()Landroid/app/Application;
+-
+-    move-result-object v0
+-
+-    invoke-virtual {v0}, Landroid/app/Application;->getPackageName()Ljava/lang/String;
+-
+-    move-result-object v1
+-
+-    const/4 v2, 0x1
+-
+-    invoke-virtual {v0, v1, v2}, Landroid/content/Context;->createPackageContext(Ljava/lang/String;I)Landroid/content/Context;
++    sget-object v0, Lcom/Fix/Pref;->appSharedPreferences:Landroid/content/SharedPreferences;
+ 
+-    move-result-object v0
++    if-nez v0, :cond_init
+ 
+-    invoke-virtual {v0}, Landroid/content/Context;->getApplicationContext()Landroid/content/Context;
++    invoke-static {}, Lcom/Fix/Pref;->getSharedPreferences()Landroid/content/SharedPreferences;
+ 
+     move-result-object v0
+ 
+-    invoke-static {v0}, Landroid/preference/PreferenceManager;->getDefaultSharedPreferences(Landroid/content/Context;)Landroid/content/SharedPreferences;
+-
+-    move-result-object v0
++    sput-object v0, Lcom/Fix/Pref;->appSharedPreferences:Landroid/content/SharedPreferences;
+ 
++    :cond_init
+     invoke-interface {v0}, Landroid/content/SharedPreferences;->edit()Landroid/content/SharedPreferences$Editor;
+ 
+     move-result-object v0
+@@ -611,28 +483,17 @@
+ .method public static setValue(Ljava/lang/String;I)V
+     .locals 3
+ 
+-    invoke-static {}, Landroid/app/AppGlobals;->getInitialApplication()Landroid/app/Application;
+-
+-    move-result-object v0
+-
+-    invoke-virtual {v0}, Landroid/app/Application;->getPackageName()Ljava/lang/String;
+-
+-    move-result-object v1
+-
+-    const/4 v2, 0x1
+-
+-    invoke-virtual {v0, v1, v2}, Landroid/content/Context;->createPackageContext(Ljava/lang/String;I)Landroid/content/Context;
++    sget-object v0, Lcom/Fix/Pref;->appSharedPreferences:Landroid/content/SharedPreferences;
+ 
+-    move-result-object v0
++    if-nez v0, :cond_init
+ 
+-    invoke-virtual {v0}, Landroid/content/Context;->getApplicationContext()Landroid/content/Context;
++    invoke-static {}, Lcom/Fix/Pref;->getSharedPreferences()Landroid/content/SharedPreferences;
+ 
+     move-result-object v0
+ 
+-    invoke-static {v0}, Landroid/preference/PreferenceManager;->getDefaultSharedPreferences(Landroid/content/Context;)Landroid/content/SharedPreferences;
+-
+-    move-result-object v0
++    sput-object v0, Lcom/Fix/Pref;->appSharedPreferences:Landroid/content/SharedPreferences;
+ 
++    :cond_init
+     invoke-interface {v0}, Landroid/content/SharedPreferences;->edit()Landroid/content/SharedPreferences$Editor;
+ 
+     move-result-object v0
+-- 
+2.54.0
+

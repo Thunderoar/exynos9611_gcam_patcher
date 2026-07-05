@@ -1,0 +1,37 @@
+From 7dd7200e0605d7e8ca9cdaf319945fdededea2c7 Mon Sep 17 00:00:00 2001
+From: roku <Thunderoar>
+Date: Sun, 5 Jul 2026 20:30:11 +0800
+Subject: [PATCH 4/8] fix: move RAW/DNG processing from main thread to
+ dedicated background thread
+
+Replaces Looper.getMainLooper() with a new HandlerThread('RawProcessing')
+to prevent CPU-heavy RAW processing from blocking the UI thread,
+eliminating freezes and ANR risks.
+---
+ smali/dws.smali | 10 +++++++++-
+ 1 file changed, 9 insertions(+), 1 deletion(-)
+
+diff --git a/smali/dws.smali b/smali/dws.smali
+index 4a7e0b5f..7000ddbb 100644
+--- a/smali/dws.smali
++++ b/smali/dws.smali
+@@ -211,7 +211,15 @@
+ 
+     iput-object p8, p0, Ldws;->L:Lebc;
+ 
+-    invoke-static {}, Landroid/os/Looper;->getMainLooper()Landroid/os/Looper;
++    new-instance p1, Landroid/os/HandlerThread;
++
++    const-string p11, "RawProcessing"
++
++    invoke-direct {p1, p11}, Landroid/os/HandlerThread;-><init>(Ljava/lang/String;)V
++
++    invoke-virtual {p1}, Landroid/os/HandlerThread;->start()V
++
++    invoke-virtual {p1}, Landroid/os/HandlerThread;->getLooper()Landroid/os/Looper;
+ 
+     move-result-object p1
+ 
+-- 
+2.54.0
+
